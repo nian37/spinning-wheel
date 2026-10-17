@@ -174,19 +174,6 @@
     letter-spacing: 1px;
   }
   .hint b { color: #7bd8ff; }
-  .mute {
-    margin-top: 6px;
-    padding: 6px 18px;
-    font-size: 13px;
-    letter-spacing: 1px;
-    color: #fff;
-    background: rgba(255,255,255,.12);
-    border: 1px solid rgba(255,255,255,.35);
-    border-radius: 20px;
-    cursor: pointer;
-    transition: background .15s;
-  }
-  .mute:hover { background: rgba(255,255,255,.25); }
 </style>
 </head>
 <body>
@@ -211,7 +198,6 @@
 
   <button class="btn" id="spinBtn">开始转动</button>
   <p class="hint">题目可自定义，见文件顶部 <b>TRUTHS / DARES</b> 数组 · 抽到「直接喝酒」会跳到喝几杯转盘</p>
-  <p class="hint"><button class="mute" id="muteBtn">🔊 朗读开</button></p>
 
   <div class="toast" id="toast">
     <h2 id="toastTitle">🎯 你的题目</h2>
@@ -568,7 +554,6 @@ const toast = document.getElementById("toast");
 const toastTitle = document.getElementById("toastTitle");
 const toastText = document.getElementById("toastText");
 const toastBack = document.getElementById("toastBack");
-const muteBtn = document.getElementById("muteBtn");
 
 /* 喝几杯转盘 */
 const DRINK_WHEEL = ["喝半杯", "喝一杯", "喝一杯半", "喝两杯", "喝两杯半", "喝三杯"];
@@ -599,27 +584,28 @@ let currentAngle = 0;   // 主转盘角度
 let drinkAngle = 0;     // 喝几杯转盘角度
 let spinning = false;
 let drinkSpinning = false;
-let muted = false;      // 是否静音朗读
 
 /* ---------- 语音朗读 ---------- */
+let zhVoice = null;
+function loadZhVoice() {
+  const voices = speechSynthesis.getVoices();
+  zhVoice = voices.find(v => /zh/i.test(v.lang)) || null;
+}
+if ("speechSynthesis" in window) {
+  loadZhVoice();
+  speechSynthesis.onvoiceschanged = loadZhVoice; // 中文语音列表异步加载
+}
 function speak(text) {
-  if (muted || !("speechSynthesis" in window)) return;
+  if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "zh-CN";
-  const zh = speechSynthesis.getVoices().find(v => /zh/i.test(v.lang));
-  if (zh) u.voice = zh;
+  if (zhVoice) u.voice = zhVoice;
   u.rate = 1;
   speechSynthesis.speak(u);
+  // Chrome 的合成器会“休眠”，需要 resume 唤醒才能发声
+  speechSynthesis.resume();
 }
-if ("speechSynthesis" in window) {
-  speechSynthesis.onvoiceschanged = () => {}; // 触发语音列表异步加载
-}
-muteBtn.addEventListener("click", () => {
-  muted = !muted;
-  if (muted && "speechSynthesis" in window) speechSynthesis.cancel();
-  muteBtn.textContent = muted ? "🔇 朗读关" : "🔊 朗读开";
-});
 
 /* ---------- 通用盘面绘制 ---------- */
 function sizeCanvasFor(c) {
