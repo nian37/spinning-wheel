@@ -621,8 +621,9 @@ function sizeCanvasFor(c) {
 window.addEventListener("resize", () => { drawWheel(); drawDrinkWheel(); });
 
 function drawSegments(canvas, items, angle, colorOf) {
-  const ctx = sizeCanvasFor(canvas);
   const size = canvas.clientWidth;
+  if (size <= 0) return; // 隐藏中的画布尺寸为 0，跳过绘制避免报错
+  const ctx = sizeCanvasFor(canvas);
   const cx = size / 2, cy = size / 2;
   const r = size / 2 - 2;
   const slice = (Math.PI * 2) / items.length;
