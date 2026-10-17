@@ -174,13 +174,26 @@
     letter-spacing: 1px;
   }
   .hint b { color: #7bd8ff; }
+  .mute {
+    margin-top: 6px;
+    padding: 6px 18px;
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: #fff;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .mute:hover { background: rgba(255,255,255,.25); }
 </style>
 </head>
 <body>
 
   <h1>真心话大冒险</h1>
 
-  <div class="stage">
+  <div class="stage" id="stageMain">
     <div class="pointer"></div>
     <div class="wheel-wrap">
       <canvas id="wheel"></canvas>
@@ -188,12 +201,23 @@
     </div>
   </div>
 
+  <div class="stage" id="stageDrink" style="display:none">
+    <div class="pointer"></div>
+    <div class="wheel-wrap">
+      <canvas id="wheelDrink"></canvas>
+      <div class="hub"><span id="hubDrinkText">喝</span></div>
+    </div>
+  </div>
+
   <button class="btn" id="spinBtn">开始转动</button>
-  <p class="hint">题目可自定义，见文件顶部 <b>TRUTHS / DARES</b> 数组</p>
+  <p class="hint">题目可自定义，见文件顶部 <b>TRUTHS / DARES</b> 数组 · 抽到「直接喝酒」会跳到喝几杯转盘</p>
+  <p class="hint"><button class="mute" id="muteBtn">🔊 朗读开</button></p>
+
   <div class="toast" id="toast">
     <h2 id="toastTitle">🎯 你的题目</h2>
     <p id="toastText"></p>
     <div class="actions">
+      <button id="toastBack" style="display:none">返回主转盘</button>
       <button class="close" id="toastClose">知道了</button>
     </div>
   </div>
@@ -534,53 +558,104 @@ const DARES = [
 /* ===================================================== */
 
 const canvas = document.getElementById("wheel");
-const ctx = canvas.getContext("2d");
+const canvasDrink = document.getElementById("wheelDrink");
 const spinBtn = document.getElementById("spinBtn");
 const hubText = document.getElementById("hubText");
+const hubDrinkText = document.getElementById("hubDrinkText");
+const stageMain = document.getElementById("stageMain");
+const stageDrink = document.getElementById("stageDrink");
 const toast = document.getElementById("toast");
+const toastTitle = document.getElementById("toastTitle");
 const toastText = document.getElementById("toastText");
+const toastBack = document.getElementById("toastBack");
+const muteBtn = document.getElementById("muteBtn");
 
-/* 所有题目直接作为盘面扇区（不再分类） */
-const ITEMS = [...TRUTHS, ...DARES];
+/* 喝几杯转盘 */
+const DRINK_WHEEL = ["喝半杯", "喝一杯", "喝一杯半", "喝两杯", "喝两杯半", "喝三杯"];
+const DRINK_COLORS = ["#ff2d55", "#ff7a45", "#ff5e7a", "#e8344f", "#ff9a3c", "#c2185b"];
+const DRINK_N = DRINK_WHEEL.length;
+
+/* 主转盘：326 道题 + 100 个「直接喝酒」均匀混排 */
+const QS = [...TRUTHS, ...DARES];
+const DRINK_COUNT = 100;
+const ITEMS = [];
+{
+  const step = (QS.length + DRINK_COUNT) / DRINK_COUNT;
+  let next = step, qi = 0, drinks = 0;
+  for (let i = 0; i < QS.length + DRINK_COUNT; i++) {
+    if (i + 1 >= next && drinks < DRINK_COUNT) {
+      ITEMS.push("直接喝酒");
+      drinks++;
+      next += step;
+    } else {
+      ITEMS.push(QS[qi++]);
+    }
+  }
+}
 const N = ITEMS.length;
 const PALETTE = ["#4f8fff", "#7bd8ff", "#ff5e7a", "#ff8fa3", "#ffd76e", "#9d7bff"];
 
-let currentAngle = 0;
+let currentAngle = 0;   // 主转盘角度
+let drinkAngle = 0;     // 喝几杯转盘角度
 let spinning = false;
+let drinkSpinning = false;
+let muted = false;      // 是否静音朗读
 
-function sizeCanvas() {
-  const dpr = window.devicePixelRatio || 1;
-  const size = canvas.clientWidth;
-  canvas.width = size * dpr;
-  canvas.height = size * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+/* ---------- 语音朗读 ---------- */
+function speak(text) {
+  if (muted || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "zh-CN";
+  const zh = speechSynthesis.getVoices().find(v => /zh/i.test(v.lang));
+  if (zh) u.voice = zh;
+  u.rate = 1;
+  speechSynthesis.speak(u);
 }
-window.addEventListener("resize", () => { sizeCanvas(); drawWheel(); });
+if ("speechSynthesis" in window) {
+  speechSynthesis.onvoiceschanged = () => {}; // 触发语音列表异步加载
+}
+muteBtn.addEventListener("click", () => {
+  muted = !muted;
+  if (muted && "speechSynthesis" in window) speechSynthesis.cancel();
+  muteBtn.textContent = muted ? "🔇 朗读关" : "🔊 朗读开";
+});
 
-function drawWheel() {
+/* ---------- 通用盘面绘制 ---------- */
+function sizeCanvasFor(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const size = c.clientWidth;
+  c.width = size * dpr;
+  c.height = size * dpr;
+  return c.getContext("2d");
+}
+window.addEventListener("resize", () => { drawWheel(); drawDrinkWheel(); });
+
+function drawSegments(canvas, items, angle, colorOf) {
+  const ctx = sizeCanvasFor(canvas);
   const size = canvas.clientWidth;
   const cx = size / 2, cy = size / 2;
   const r = size / 2 - 2;
-  const slice = (Math.PI * 2) / N;
+  const slice = (Math.PI * 2) / items.length;
 
   ctx.clearRect(0, 0, size, size);
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(currentAngle);
+  ctx.rotate(angle);
 
   // 扇区足够宽才绘制文字（题目很多时，文字改由弹窗展示）
   const showText = slice > 0.16;
   const fontSize = Math.min(15, Math.max(9, r * slice * 0.55));
 
-  for (let i = 0; i < N; i++) {
+  for (let i = 0; i < items.length; i++) {
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.arc(0, 0, r, i * slice, (i + 1) * slice);
     ctx.closePath();
-    ctx.fillStyle = PALETTE[i % PALETTE.length];
+    ctx.fillStyle = colorOf(i, items[i]);
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,.7)";
-    ctx.lineWidth = N > 40 ? 0.8 : 2;
+    ctx.lineWidth = items.length > 40 ? 0.8 : 2;
     ctx.stroke();
 
     if (showText) {
@@ -591,14 +666,22 @@ function drawWheel() {
       ctx.font = `bold ${fontSize}px 'PingFang SC', 'Microsoft YaHei', sans-serif`;
       ctx.shadowColor = "rgba(0,0,0,.3)";
       ctx.shadowBlur = 2;
-      ctx.fillText(ITEMS[i], r - 20, fontSize * 0.35);
+      ctx.fillText(items[i], r - 20, fontSize * 0.35);
       ctx.restore();
     }
   }
-
   ctx.restore();
 }
 
+function drawWheel() {
+  drawSegments(canvas, ITEMS, currentAngle, (i, item) =>
+    item === "直接喝酒" ? "#ff2d55" : PALETTE[i % PALETTE.length]);
+}
+function drawDrinkWheel() {
+  drawSegments(canvasDrink, DRINK_WHEEL, drinkAngle, i => DRINK_COLORS[i % DRINK_COLORS.length]);
+}
+
+/* ---------- 主转盘 ---------- */
 function spin() {
   if (spinning) return;
   spinning = true;
@@ -612,7 +695,6 @@ function spin() {
   const startTime = performance.now();
 
   function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
-
   function frame(now) {
     const t = Math.min((now - startTime) / duration, 1);
     currentAngle = startAngle + (target - startAngle) * easeOutQuart(t);
@@ -623,21 +705,81 @@ function spin() {
       spinning = false;
       spinBtn.disabled = false;
       hubText.textContent = "GO";
-      showResult();
+      onMainResult();
     }
   }
   requestAnimationFrame(frame);
 }
 
-function showResult() {
+function onMainResult() {
   const slice = (Math.PI * 2) / N;
   let a = (-currentAngle - Math.PI / 2) % (Math.PI * 2);
   if (a < 0) a += Math.PI * 2;
   const item = ITEMS[Math.floor(a / slice) % N];
 
+  if (item === "直接喝酒") {
+    // 跳到「喝几杯」转盘并自动转动
+    stageMain.style.display = "none";
+    stageDrink.style.display = "";
+    toast.classList.remove("show");
+    toastBack.style.display = "none";
+    setTimeout(spinDrink, 500);
+    return;
+  }
+
+  toastTitle.textContent = "🎯 你的题目";
   toastText.textContent = item;
   toast.classList.add("show");
+  speak(item);
 }
+
+/* ---------- 喝几杯转盘 ---------- */
+function spinDrink() {
+  if (drinkSpinning) return;
+  drinkSpinning = true;
+  hubDrinkText.textContent = "…";
+
+  const extraTurns = 4 + Math.random() * 4;
+  const target = drinkAngle + extraTurns * Math.PI * 2 + Math.random() * Math.PI * 2;
+  const startAngle = drinkAngle;
+  const duration = 3500;
+  const startTime = performance.now();
+
+  function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+  function frame(now) {
+    const t = Math.min((now - startTime) / duration, 1);
+    drinkAngle = startAngle + (target - startAngle) * easeOutQuart(t);
+    drawDrinkWheel();
+    if (t < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      drinkSpinning = false;
+      hubDrinkText.textContent = "喝";
+      onDrinkResult();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function onDrinkResult() {
+  const slice = (Math.PI * 2) / DRINK_N;
+  let a = (-drinkAngle - Math.PI / 2) % (Math.PI * 2);
+  if (a < 0) a += Math.PI * 2;
+  const item = DRINK_WHEEL[Math.floor(a / slice) % DRINK_N];
+
+  toastTitle.textContent = "🍻 喝几杯？";
+  toastText.textContent = item;
+  toastBack.style.display = "";
+  toast.classList.add("show");
+  speak(item);
+}
+
+/* 返回主转盘 */
+toastBack.addEventListener("click", () => {
+  toast.classList.remove("show");
+  stageDrink.style.display = "none";
+  stageMain.style.display = "";
+});
 
 document.getElementById("toastClose").addEventListener("click", () => {
   toast.classList.remove("show");
@@ -645,9 +787,10 @@ document.getElementById("toastClose").addEventListener("click", () => {
 
 spinBtn.addEventListener("click", spin);
 hubText.addEventListener("click", spin);
+hubDrinkText.addEventListener("click", spinDrink);
 
-sizeCanvas();
 drawWheel();
+drawDrinkWheel();
 </script>
 </body>
 </html>
