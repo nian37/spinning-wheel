@@ -14,10 +14,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: safe center;
     padding: 24px;
     color: #fff;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   h1 {
@@ -132,6 +133,7 @@
   }
   .btn-ghost:hover { box-shadow: none; border-color: #7bd8ff; color: #7bd8ff; }
   .btn-small { padding: 8px 18px; font-size: 14px; letter-spacing: 2px; }
+  .back-btn { margin-bottom: 14px; }
 
   /* 抽人名单管理 */
   .people-manage { margin-top: 22px; width: min(420px, 86vw); margin-left: auto; margin-right: auto; }
@@ -232,6 +234,7 @@
   </div>
 
   <div class="stage" id="stagePeople" style="display:none">
+    <button class="btn btn-ghost btn-small back-btn" id="peopleBackBtn">← 返回主界面</button>
     <div class="pointer"></div>
     <div class="wheel-wrap">
       <canvas id="wheelPeople"></canvas>
@@ -243,9 +246,6 @@
         <input id="peopleInput" maxlength="6" placeholder="输入名字，回车添加">
         <button class="btn btn-ghost btn-small" id="peopleAddBtn">添加</button>
         <button class="btn btn-ghost btn-small" id="peopleResetBtn">重置名单</button>
-      </div>
-      <div class="people-add">
-        <button class="btn btn-ghost btn-small" id="peopleBackBtn">返回主转盘</button>
       </div>
     </div>
   </div>
