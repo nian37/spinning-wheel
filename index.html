@@ -61,8 +61,8 @@
 
   .wheel-wrap {
     position: relative;
-    width: 420px;
-    height: 420px;
+    width: min(420px, 86vw);
+    aspect-ratio: 1 / 1;
     border-radius: 50%;
     padding: 16px;
     background: conic-gradient(from 0deg,
@@ -613,7 +613,10 @@ function sizeCanvasFor(c) {
   const size = c.clientWidth;
   c.width = size * dpr;
   c.height = size * dpr;
-  return c.getContext("2d");
+  const ctx = c.getContext("2d");
+  // 关键：把逻辑坐标放大到物理像素，否则高分屏上图形只画在左上角、被拉伸变形
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
 }
 window.addEventListener("resize", () => { drawWheel(); drawDrinkWheel(); });
 
