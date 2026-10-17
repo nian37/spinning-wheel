@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>真心话大冒险转盘</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    min-height: 100vh;
+    background: radial-gradient(1200px 800px at 50% -10%, #4b2e83, #241b3e 55%, #14102a);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    color: #fff;
+    overflow: hidden;
+  }
+
+  h1 {
+    font-size: 28px;
+    letter-spacing: 6px;
+    margin-bottom: 24px;
+    background: linear-gradient(90deg, #7bd8ff, #ff8fa3, #7bd8ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 30px rgba(120, 190, 255, 0.25);
+  }
+
+  .stage { position: relative; }
+
+  /* 指针 */
+  .pointer {
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    width: 0;
+    height: 0;
+    border-left: 18px solid transparent;
+    border-right: 18px solid transparent;
+    border-top: 44px solid #ffd76e;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,.4));
+  }
+  .pointer::after {
+    content: "";
+    position: absolute;
+    top: -40px;
+    left: -10px;
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 34px solid #fff5d6;
+  }
+
+  .wheel-wrap {
+    position: relative;
+    width: 420px;
+    height: 420px;
+    border-radius: 50%;
+    padding: 16px;
+    background: conic-gradient(from 0deg,
+      #5b9bff, #7bd8ff, #ff5e7a, #ff8fa3,
+      #5b9bff, #7bd8ff, #ff5e7a, #ff8fa3);
+    box-shadow: 0 18px 50px rgba(0,0,0,.5), inset 0 0 0 3px rgba(255,255,255,.25);
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+  }
+
+  .hub {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 78px;
+    height: 78px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #fff, #d8c9f0 60%, #b9a2e6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4), inset 0 -4px 8px rgba(0,0,0,.15);
+  }
+  .hub span {
+    font-size: 24px;
+    font-weight: 700;
+    color: #6b4da8;
+    cursor: pointer;
+    user-select: none;
+    text-shadow: 0 1px 0 rgba(255,255,255,.6);
+  }
+
+  .btn {
+    margin-top: 28px;
+    padding: 12px 48px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 4px;
+    color: #fff;
+    border: none;
+    border-radius: 40px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #5b9bff, #ff5e7a);
+    box-shadow: 0 8px 22px rgba(110, 120, 255, .4);
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(110, 120, 255, .5); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+  /* 结果弹窗 */
+  .toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(.8);
+    background: rgba(20, 14, 40, .96);
+    border: 2px solid #7bd8ff;
+    border-radius: 18px;
+    padding: 28px 38px;
+    text-align: center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .25s;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    max-width: 86vw;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+  .toast h2 {
+    font-size: 20px;
+    letter-spacing: 4px;
+    margin-bottom: 14px;
+  }
+  .toast p {
+    font-size: 20px;
+    font-weight: 600;
+    color: #fff;
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+  .toast .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .toast .actions button {
+    padding: 8px 24px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    letter-spacing: 2px;
+    border: 1px solid #7bd8ff;
+    background: transparent;
+    color: #7bd8ff;
+    transition: background .15s, color .15s;
+  }
+  .toast .actions button:hover { background: #7bd8ff; color: #14102a; }
+  .toast .actions .close { border-color: rgba(255,255,255,.4); color: rgba(255,255,255,.7); }
+  .toast .actions .close:hover { background: rgba(255,255,255,.9); color: #14102a; }
+
+  .hint {
+    margin-top: 16px;
+    font-size: 13px;
+    color: rgba(255,255,255,.55);
+    letter-spacing: 1px;
+  }
+  .hint b { color: #7bd8ff; }
+</style>
+</head>
+<body>
+
+  <h1>真心话大冒险</h1>
+
+  <div class="stage">
+    <div class="pointer"></div>
+    <div class="wheel-wrap">
+      <canvas id="wheel"></canvas>
+      <div class="hub"><span id="hubText">GO</span></div>
+    </div>
+  </div>
+
+  <button class="btn" id="spinBtn">开始转动</button>
+  <p class="hint">题目可自定义，见文件顶部 <b>TRUTHS / DARES</b> 数组</p>
+  <div class="toast" id="toast">
+    <h2 id="toastTitle">🎯 你的题目</h2>
+    <p id="toastText"></p>
+    <div class="actions">
+      <button class="close" id="toastClose">知道了</button>
+    </div>
+  </div>
+
+<script>
+/* ================= 题目配置（按需修改） ================= */
+const TRUTHS = [
+  "你最近一次偷偷笑是什么时候？因为什么？",
+  "你手机相册里最后一张照片是什么？",
+  "说出你最近的一个小秘密。",
+  "你做过最尴尬的一件事是什么？",
+  "如果明天是世界末日，你最想做什么？",
+  "你最后悔的一件事是什么？",
+  "你最近一次说谎是什么时候？说了什么？",
+  "你最喜欢的一个人是谁？为什么？",
+  "你曾经暗恋过谁？还在喜欢吗？",
+  "描述一下你理想中的约会。",
+  "你做过最疯狂的一件事是什么？",
+  "你上一次哭是什么时候？因为什么？",
+  "如果你能拥有一个超能力，你会选什么？",
+  "你手机里最舍不得删的聊天记录是什么？",
+  "你觉得自己最大的缺点是什么？",
+  "你现在最想见的人是谁？",
+  "上次接吻是什么时候？",
+  "上次接吻是和谁？",
+  "暗恋过几个异性？",
+  "有主动追求过别人吗？",
+  "有被别人追求过吗？",
+  "现在心里最在意的异性名字？",
+  "初恋什么时候没的？怎么认识的？",
+  "初恋对方现在过得怎么样？",
+  "初恋如果再给你一次机会，还会珍惜吗？",
+  "最喜欢吃的食物？",
+  "最讨厌的食物是什么？",
+  "饭店的菜好吃还是家里的好吃？",
+  "当异性因为分手找你求安慰你会怎么做？",
+  "父母对象孩子你怎么排序？",
+  "送礼物会送内衣吗？",
+  "你认为情侣一天都不联系对方正常吗？",
+  "你对另一半有什么要求和底线？",
+  "每天醒来后第一个想起的人是谁？",
+  "发生过最尴尬的事情是什么？",
+  "见过别人最尴尬的事情是什么？",
+  "做过最无聊的事情是什么？",
+  "无聊的时候想干什么？",
+  "会经常便秘吗？",
+  "厕所看手机吗？",
+  "上次哭是什么时候？",
+  "最想哭的事情是什么？",
+  "买过最贵的东西是多少钱？",
+  "理想中的另一半是什么样子的？",
+  "择偶的标准是什么？",
+  "被甩过多少次？",
+  "甩过别人多少次？",
+  "甩别人的感觉是怎样的？",
+  "有过空虚寂寞冷的时候吗？这时候会想起谁？",
+  "会做什么事情来缓解空虚寂寞冷？",
+  "分享一下你的恋爱史？",
+  "你对另一半的要求有哪些？",
+  "初恋是在什么情景下发生的？对方说了什么？",
+  "男人善变还是女人善变？",
+  "男人的话可信还是女人的话？",
+  "如果可以选择，你会选做异性吗？",
+  "如果变成异性后，最想干的事情是什么？",
+  "自己拥有的最宝贵的东西是什么？",
+  "自己最不想要的又是什么？",
+  "男女之间存在友谊吗？",
+  "分手后还会继续约吗？",
+  "一个月开销多少钱？",
+  "平时开销花在什么地方的最多？",
+  "屏保会主动设对象照片吗？",
+  "会不会向暗恋的人表白？通常会怎样表白？",
+  "做过最浪漫的事情是什么？",
+  "想给别人怎样的浪漫？",
+  "男的是不是天生应该赚钱养家？女的天生负责貌美如花？",
+  "喜欢平胸的女生还是胸大的女生？",
+  "你会因为什么习惯喜欢别人对你做什么小动作？",
+  "讨厌别人对你做什么动作？",
+  "“我爱你”这三个字，你相信吗？你说过多少次？",
+  "什么样的女人叫有女人味？",
+  "什么样的男人叫有男人味？",
+  "接受姐弟恋吗？相差多少岁可以接受？",
+  "如果你有机会唱一首喜欢的歌给你喜欢的人听，你要唱什么？",
+  "什么样的分手方式最佳？",
+  "你会选择什么方式跟对方分手？",
+  "你喜欢爱一个人，还是被一个人爱？哪种会更幸福一些？",
+  "如果给你一千万，你想怎么花？",
+  "你觉得分手后还能当朋友吗？",
+  "在你心中谁最可信？",
+  "和异性发生过最暧昧的事情？",
+  "你对喜欢的异性有什么感觉？要具体。",
+  "你上次吵架最伤心是什么时候？和谁？什么原因？",
+  "如果跟你喜欢的人约会碰到前任，你会有什么反应？",
+  "情人节最想收到什么礼物？",
+  "你有没有钟意的人？是谁？",
+  "你觉得你喜欢的哪位异性/同性的嘴唇看起来最想Kiss？",
+  "你是否幻想过或希望和你喜欢的人做那些事？",
+  "你觉得你曾经喜欢的人现在还喜欢吗？为什么？",
+  "如果有来生你选择当什么？",
+  "我在你眼里什么样？",
+  "你最关心的异性是谁？（除了亲人，不许说没有）",
+  "如果时间能倒流你希望回到哪一时间，为什么？",
+  "如果突然有异性说爱上你了，你怎么办？",
+  "如果时间能倒流，你喜欢回到哪个时候？",
+  "跟异性做过最亲密的事是什么？",
+  "洗澡洗到一半没水了怎么办？（注意是身上有泡沫的时候）",
+  "你会不会在意ta的过去，为什么？",
+  "你会为了众人的反对放弃自己想要的东西或人吗？",
+  "你希望另一半哪个部位最好看？",
+  "你对自己身上哪个部位最满意？",
+  "如果前任要求复合，你会怎么办？",
+  "你会介意对象的手机里还留着前任的微信吗？只是没删，从不聊天那种。",
+  "对象可以有一个每天都会分享日常的异性朋友吗？只分享，不暧昧。",
+  "如果对象和异性同事单独加班到深夜，并且没有提前告诉你，你会怎么想？",
+  "对象在你面前夸另一个异性身材好或者能力强，你的第一反应是什么？",
+  "你觉得正常的社交距离里，异性朋友可以拍肩膀或者碰手臂吗？",
+  "如果有异性朋友凌晨1点给你发“睡了吗”，你会怎么回？还是当没看见？",
+  "你发现对象最近和某个人的聊天记录比和你还多，你会主动要求看吗？",
+  "如果我告诉你，我和前任现在只是偶尔点赞的关系，你信吗？",
+  "你介意对象单独和一个异性去看电影吗？哪怕是白天、公共场合、看完就回来。",
+  "如果有个异性同事每天午休都找对象一起吃饭，你觉得正常吗？",
+  "你发现对象在某个异性朋友的每一条朋友圈下面都点赞，但从不评论，你会怎么想？",
+  "如果对象出差时和异性同行住同一家酒店但不同房间，你会睡不着吗？",
+  "你看到对象的手机弹出一条消息“昨天谢谢你”，发消息的人是你没见过的一个名字，你会问吗？",
+  "你觉得情侣之间，应不应该主动删除前任的所有联系方式？",
+  "如果对象说“有一个异性朋友最近失恋了，约对象单独喝酒安慰一下”，你会同意吗？",
+  "你发现对象在某个异性面前笑得很开心，但那个笑不是因为你，你会记多久？",
+  "如果有异性送你对象一份很用心的生日礼物，你会想知道是什么吗？",
+  "你觉得“我只是随便聊聊”这句话，从你对象嘴里说出来的时候，有几分可信？",
+  "如果我告诉你“有人对我表白了但我拒绝了”，你会想追问那个人是谁、什么时候、在哪里吗？",
+  "你刚才回答这些问题的时候，有没有哪一个让你心里“咯噔”了一下？是第几个？",
+  "你发现对象微信里有一个人的消息是免打扰模式，但和ta每天都有聊天，你会怎么想？",
+  "如果对象和一个异性朋友单独出去吃饭，并且没有告诉你具体是谁，你会怎么办？",
+  "你觉得“我只是把他当哥哥”这句话，在什么情况下是真的，什么情况下是借口？",
+  "你觉得情侣之间最暧昧的动作是什么？",
+  "如果你和你对象现在去住酒店，你最期待的环节是什么？",
+  "如果你对象特别依赖你，你会开心吗？",
+  "对象做什么事会让你觉得特别被爱着？",
+  "你想象中的最美约会场景是什么？",
+  "你想象中的婚礼是什么样的？",
+  "你最喜欢对象怎么称呼你？",
+  "你最喜欢的肢体接触方式是什么？（拥抱/摸头等）",
+  "当你和你对象意见不合时，你觉得说服他最有效的说服方式是什么？",
+  "你希望和对象保持什么样的财务相处模式？",
+  "当你对象做错事时，你更希望ta卖萌道歉还是认真检讨？",
+  "当你对象购物冲动时，你希望ta怎么和你商量？",
+  "你最理想的情侣相处方式是什么？",
+  "你最喜欢用什么表达“我爱你”？",
+  "当你对象忘记重要日子时，怎样的补救会让你消气？",
+  "你觉得一段感情中多久进行一次深度谈心是正常的？",
+  "你愿意为爱情牺牲到什么程度？",
+  "爱情，事业，家庭你会怎么排序？",
+  "你如果惹对象生气了会怎么哄？",
+  "对你而言幸福的家庭是什么样的？",
+  "谈恋爱的时候最不喜欢对方做什么？",
+  "怎么看待情侣之间隐私问题？比如该不该看对方手机、查岗之类的？",
+  "你的择偶标准是什么？",
+  "你觉得两个人在一起什么是重要的？",
+  "体验感最好的一次kiss是什么时候？什么原因？",
+  "你觉得恋爱到什么阶段比较适合结婚？",
+  "你有想做却一直没做的事情吗？",
+  "你在恋爱里最在意的三件事是什么？",
+  "你跟朋友之间会讨论对方的对象吗？",
+  "你怎么看待快餐式恋爱？",
+  "你做过最大胆的公共场所亲密行为是什么？",
+  "你最想吻你对象什么部位？",
+  "洗澡时有没有过很搞笑的小习惯？",
+  "你最大的弱点是什么？",
+  "你害怕直白聊亲密话题会产生尴尬吗？",
+  "你觉得主动表达欲望会不会显得唐突？",
+  "对视的时候你最先留意对象的眼睛还是嘴唇？",
+  "你认为亲密是感情的必需品吗？",
+  "如果你出差很久，回家想和对象做的第一件事是什么？",
+  "有没有时候，仅仅聊天就产生心动？",
+  "喜欢故意凑近撩对方心跳加速吗？",
+  "会偷偷想和对象近距离贴贴独处吗？",
+  "能接受被对象轻轻壁咚对视吗？",
+  "会故意撒娇示弱让对方迁就你吗？",
+  "喜欢对象对你有点占有欲吗？",
+  "会偷偷幻想和对象独处的私密时光吗？",
+  "能接受情侣间有点撒娇耍赖的小依赖吗？",
+  "会因为对方的温柔语气心跳加速吗？",
+  "喜欢对象只对你霸道、只宠你一人吗？",
+  "会主动跟对象说深夜才敢说的心里话吗？",
+  "愿意把所有温柔和柔软只留给对方吗？",
+  "能接受情侣之间不用刻意保持距离吗？",
+  "想和对象解锁更多独处甜蜜模式吗？",
+  "会忍不住黏着对方，一刻都不想分开吗？",
+  "喜欢对方把你当成独一份的偏爱吗？",
+  "能接受彼此是对方心里独一无二的存在吗？",
+  "喜欢被对象稳稳偏爱、牢牢放在心上吗？",
+  "会期待和对象有更多温柔亲密的相处吗？",
+  "认定这辈子只甘愿被他一个人拿捏吗？",
+  "愿意和他从新鲜感走到一辈子的偏爱吗？",
+  "你觉得对象身上最适合画画的“画布”是哪一块？",
+  "你觉得黑暗中什么感官最灵敏？",
+  "如果我现在用指尖从你的手腕慢慢滑到手心，你会躲吗？",
+  "两个人一起洗澡，先洗头还是先洗点什么别的？",
+  "你手机里最近一张聊天记录是和谁的？内容是什么？",
+  "你有没有过网恋？最长的一次持续了多久？",
+  "你有没有过和对象/暧昧对象在公共场所接吻的经历？",
+  "你有没有过在深夜里，给前任发过消息？",
+  "你有没有过“想和某个人过一辈子，却最后走散了”的经历？",
+  "如果今晚可以对我提一个要求（不能拒绝），你会提什么？",
+  "如果注定没有结局，你会继续还是结束？",
+  "你理想中的xing生活频率和氛围是什么样的？",
+  "未来结婚会邀请前任吗？",
+  "你觉得“幽默感”在择偶中重要吗？",
+  "你认为“独立空间”在感情中重要吗？",
+  "你认为“三观一致”在感情中重要吗？",
+  "巧克力味的粑粑和粑粑味的巧克力，选哪个？",
+  "你是喜欢蜻蜓点水还是舌吻？",
+  "至今仍藏在心底的遗憾是什么？",
+  "这一生，你最害怕失去什么？",
+  "“家”对你来说意味着什么？",
+  "哪一个瞬间，让你觉得自己被治愈了？",
+  "如果可以，你最想拥有什么超能力？",
+  "描述一下你眼中的“幸福”画面。",
+  "那个放弃了却还在心里的梦想是？",
+  "童年记忆里最温暖的画面是？",
+  "成长路上，谁对你的影响最大？",
+  "看到什么，会让你觉得人类很渺小？",
+  "真正让你瞬间长大的那件事。",
+  "你内心藏着什么不为人知的小骄傲？",
+  "随着年龄增长，你对时间的看法变了吗？",
+  "你现在还相信“永远”吗？",
+  "压力爆炸时，你怎么发泄？",
+  "有没有一句鼓励，支撑你走了很远？",
+  "此时此刻，你对自己满意吗？",
+  "你觉得这一生被真正理解过吗？",
+  "提起什么事，你就想立刻逃避？",
+  "你有过深夜痛哭、无法自抑的经历吗？",
+  "冬天里让你觉得温暖的小事？",
+  "哪一次选择，让你到现在还在后悔？",
+  "你究竟想成为一个什么样的人？",
+  "只要我不说，就没人知道的秘密是？",
+  "你是习惯隐藏，还是习惯表达？",
+  "想到什么场景，会让你瞬间心安？",
+  "哪段关系让你觉得意难平？",
+  "哪一刻让你觉得“活着真好”？",
+  "你最怕别人用什么词评价你？",
+  "人性的哪种特质你最珍视？",
+  "你相信一见钟情，还是日久生情？",
+  "你现在最想原谅的人是谁？",
+  "陌生人给过你怎样的温暖？",
+  "什么时刻让你觉得自己“被需要”？",
+  "独处的时候，你通常在想什么？",
+  "看到什么画面会让你突然泪目？",
+  "哪句话曾深深刺痛过你？",
+  "说实话，你有过真心的嫉妒吗？",
+  "最害怕重复经历什么样的痛苦？",
+  "那个让你在深夜偷偷想念的人是谁？",
+  "对未来最大的期待是什么？",
+  "被误解时，你会拼命解释吗？",
+  "哪次失败，成了你蜕变的转折点？",
+  "哪首歌是你的人生BGM？",
+  "眼下有没有不敢面对的事？",
+  "如果可以穿越，最想回到哪一刻？",
+  "现在的你和五年前比，最大的变化是？",
+  "什么样的朋友值得你深交？",
+  "经历这么多，还相信好人有好报吗？",
+  "临死前最想做的一件事？",
+  "最近一次感到委屈是因为什么？",
+  "有没有一句后悔没说出口的话？",
+  "具体的哪件事让你觉得“被爱着”？",
+  "谁的存在让你觉得踏实？",
+  "有没有什么爱好，曾救过你的命？",
+  "你敢在别人面前示弱哭泣吗？",
+  "你会为了面子而委屈自己吗？",
+  "成长对你来说意味着残酷还是礼物？",
+  "哪本书真正改变了你的三观？",
+  "最近一次被启发的瞬间？",
+  "陷入自我怀疑时，你怎么走出来？",
+  "你理解的自由是想做什么就做什么吗？",
+  "你觉得婚姻是必需品吗？",
+  "哪些时刻你在假装坚强？",
+  "哪次相遇，改变了你的人生轨迹？",
+  "面对冲突，你通常是战斗还是回避？",
+  "绝望时，是什么让你看到了希望？",
+  "最想打包扔掉的一段过去？",
+  "你会为了现实向理想妥协吗？",
+  "你对友情的底线在哪里？",
+  "有什么事做起来让你忘了时间？",
+  "分开后，你还会记得对方的好吗？",
+  "你会坚持做一件不喜欢但正确的事吗？",
+  "还有没有特别想去却没去的地方？",
+  "哪怕一瞬间，你觉得自己足够好吗？",
+  "如果时光倒流，最想弥补什么？",
+  "哪种时刻让你感到蚀骨的孤独？",
+  "最近有没有被哪个风景/人惊艳到？",
+  "坚持最久的一个习惯是什么？",
+  "你相信命运是注定的吗？",
+  "抛开世俗，你认为的成功是什么？",
+  "现在的你，怎么定义“爱”？",
+  "如果现在世界末日，你最想拥抱谁？",
+  "你最讨厌自己性格里的哪一点？",
+  "排序题：金钱、健康、爱，什么最重要？",
+  "你希望老了以后过什么样的生活？",
+  "什么气味会让你觉得安心？",
+  "你真正和自己和解了吗？",
+  "哪怕全世界反对，也有人支持过你吗？",
+  "此时此刻，最想感谢谁？",
+  "今年最想实现的一个小目标？",
+  "有过百口莫辩、被深深误解的时刻吗？",
+  "你曾为了谁，不顾一切地拼过命？",
+  "谁的眼神让你觉得有力量？",
+  "什么是让你感到精神疲惫的根源？",
+  "你尝试过放下某种执念吗？成功了吗？",
+  "那个让你心脏漏跳一拍的瞬间？",
+  "你觉得什么样的活法，才算有价值？"
+];
+
+const DARES = [
+  "用最性感的语气对右边的人说一句“你好呀～”",
+  "模仿一种动物并让大家猜（不能说话）",
+  "给通讯录第一个人打电话，说“我喜欢你”",
+  "用搞笑的方式即兴跳一段舞",
+  "学广场舞大妈的样子走一圈",
+  "和旁边的人深情对视 10 秒不许笑",
+  "用三种不同的方言说“我爱你”",
+  "做 10 个俯卧撑（或 15 个深蹲）",
+  "让每个人夸你一句，你都要回“谢谢，我也是”",
+  "学猫咪叫并做出猫的动作",
+  "用话剧腔朗读手机里最近的一条消息",
+  "倒立或劈叉，做不到就表演一个才艺",
+  "亲一下自己的手背并说“么么哒”",
+  "把手机交给右边的人，让他发一条朋友圈",
+  "学机器人走路绕场一周",
+  "大声喊出“我单身我骄傲”三次",
+  "给在场所有人看手机最近三张照片",
+  "把微信头像换成兔子，保持24小时",
+  "给在场随机一人按摩一分钟",
+  "壁咚墙壁，对怀里的空气说：“女人/男人，你这是在玩火”",
+  "模仿绿茶说一段话：“姐姐姐姐我站在这里，哥哥不会生气吧”“哥哥哥哥，我坐/站在这里姐姐不会生气吧”",
+  "对着垃圾桶深情表白一分钟",
+  "你最舍不得删掉的照片是哪张？展示给所有人看"
+];
+/* ===================================================== */
+
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+const spinBtn = document.getElementById("spinBtn");
+const hubText = document.getElementById("hubText");
+const toast = document.getElementById("toast");
+const toastText = document.getElementById("toastText");
+
+/* 所有题目直接作为盘面扇区（不再分类） */
+const ITEMS = [...TRUTHS, ...DARES];
+const N = ITEMS.length;
+const PALETTE = ["#4f8fff", "#7bd8ff", "#ff5e7a", "#ff8fa3", "#ffd76e", "#9d7bff"];
+
+let currentAngle = 0;
+let spinning = false;
+
+function sizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const size = canvas.clientWidth;
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", () => { sizeCanvas(); drawWheel(); });
+
+function drawWheel() {
+  const size = canvas.clientWidth;
+  const cx = size / 2, cy = size / 2;
+  const r = size / 2 - 2;
+  const slice = (Math.PI * 2) / N;
+
+  ctx.clearRect(0, 0, size, size);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(currentAngle);
+
+  // 扇区足够宽才绘制文字（题目很多时，文字改由弹窗展示）
+  const showText = slice > 0.16;
+  const fontSize = Math.min(15, Math.max(9, r * slice * 0.55));
+
+  for (let i = 0; i < N; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, r, i * slice, (i + 1) * slice);
+    ctx.closePath();
+    ctx.fillStyle = PALETTE[i % PALETTE.length];
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.7)";
+    ctx.lineWidth = N > 40 ? 0.8 : 2;
+    ctx.stroke();
+
+    if (showText) {
+      ctx.save();
+      ctx.rotate(i * slice + slice / 2);
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${fontSize}px 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+      ctx.shadowColor = "rgba(0,0,0,.3)";
+      ctx.shadowBlur = 2;
+      ctx.fillText(ITEMS[i], r - 20, fontSize * 0.35);
+      ctx.restore();
+    }
+  }
+
+  ctx.restore();
+}
+
+function spin() {
+  if (spinning) return;
+  spinning = true;
+  spinBtn.disabled = true;
+  hubText.textContent = "…";
+
+  const extraTurns = 5 + Math.random() * 5;
+  const target = currentAngle + extraTurns * Math.PI * 2 + Math.random() * Math.PI * 2;
+  const startAngle = currentAngle;
+  const duration = 4000;
+  const startTime = performance.now();
+
+  function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+
+  function frame(now) {
+    const t = Math.min((now - startTime) / duration, 1);
+    currentAngle = startAngle + (target - startAngle) * easeOutQuart(t);
+    drawWheel();
+    if (t < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      spinning = false;
+      spinBtn.disabled = false;
+      hubText.textContent = "GO";
+      showResult();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function showResult() {
+  const slice = (Math.PI * 2) / N;
+  let a = (-currentAngle - Math.PI / 2) % (Math.PI * 2);
+  if (a < 0) a += Math.PI * 2;
+  const item = ITEMS[Math.floor(a / slice) % N];
+
+  toastText.textContent = item;
+  toast.classList.add("show");
+}
+
+document.getElementById("toastClose").addEventListener("click", () => {
+  toast.classList.remove("show");
+});
+
+spinBtn.addEventListener("click", spin);
+hubText.addEventListener("click", spin);
+
+sizeCanvas();
+drawWheel();
+</script>
+</body>
+</html>
